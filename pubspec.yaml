@@ -1,0 +1,19 @@
+name: lit_ui
+description: A lighting system for Flutter UI. Define light sources, and widgets derive their gradients, borders, and shadows automatically.
+version: 0.0.1
+
+environment:
+  sdk: ^3.6.0
+  flutter: ">=3.27.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  shaders:
+    - shaders/lit_surface.frag
