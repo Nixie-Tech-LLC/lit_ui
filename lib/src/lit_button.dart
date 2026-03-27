@@ -27,7 +27,7 @@ class LitButton extends StatefulWidget {
     this.padding,
     this.borderWidth = 1,
     this.elevation = 4,
-    this.curvature = 0.8,
+    this.curvature = 0.1,
     this.hoverLightenAmount = 0.02,
     this.fillContrast = 1.0,
     this.borderContrast = 1.0,
@@ -425,7 +425,7 @@ class _LitButtonPainter extends CustomPainter {
   @override
   bool shouldRepaint(_LitButtonPainter oldDelegate) =>
       scene != oldDelegate.scene ||
-      screenCenter != oldDelegate.screenCenter ||
+      (screenCenter - oldDelegate.screenCenter).distanceSquared > 1.0 ||
       baseColor != oldDelegate.baseColor ||
       borderWidth != oldDelegate.borderWidth ||
       borderRadius != oldDelegate.borderRadius ||

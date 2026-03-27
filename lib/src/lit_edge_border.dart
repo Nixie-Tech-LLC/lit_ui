@@ -162,7 +162,7 @@ class _LitEdgeBorderPainter extends CustomPainter {
   @override
   bool shouldRepaint(_LitEdgeBorderPainter oldDelegate) =>
       scene != oldDelegate.scene ||
-      screenCenter != oldDelegate.screenCenter ||
+      (screenCenter - oldDelegate.screenCenter).distanceSquared > 1.0 ||
       baseColor != oldDelegate.baseColor ||
       borderWidth != oldDelegate.borderWidth ||
       topLeftRadius != oldDelegate.topLeftRadius ||

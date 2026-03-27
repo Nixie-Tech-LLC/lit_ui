@@ -44,6 +44,7 @@ import 'surface_profile.dart';
 /// | 59    | uOuterShadowWidth       | outerShadowWidth (0.0 default)             |
 /// | 60    | uInnerShadowIntensity   | innerShadowIntensity (0.0 default)         |
 /// | 61    | uInnerShadowWidth       | innerShadowWidth (0.0 default)             |
+/// | 62    | uOverlay                | overlay (0.0 default)                      |
 ///
 /// Sampler layout:
 ///
@@ -113,6 +114,7 @@ class LitShader {
     double outerShadowWidth = 0.0,
     double innerShadowIntensity = 0.0,
     double innerShadowWidth = 0.0,
+    bool overlay = false,
   }) {
     if (_program == null) return null;
 
@@ -196,6 +198,9 @@ class LitShader {
     shader.setFloat(59, outerShadowWidth);
     shader.setFloat(60, innerShadowIntensity);
     shader.setFloat(61, innerShadowWidth);
+
+    // ── Overlay (uniform 62) ──
+    shader.setFloat(62, overlay ? 1.0 : 0.0);
 
     return shader;
   }

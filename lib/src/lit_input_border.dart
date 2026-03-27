@@ -324,7 +324,7 @@ class _LitInputBorderPainter extends CustomPainter {
   @override
   bool shouldRepaint(_LitInputBorderPainter oldDelegate) =>
       scene != oldDelegate.scene ||
-      screenCenter != oldDelegate.screenCenter ||
+      (screenCenter - oldDelegate.screenCenter).distanceSquared > 1.0 ||
       baseColor != oldDelegate.baseColor ||
       fillColor != oldDelegate.fillColor ||
       borderWidth != oldDelegate.borderWidth ||

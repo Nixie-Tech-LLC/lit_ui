@@ -172,6 +172,23 @@ class SurfaceMaterial {
   double get insetShadowIntensity =>
       (0.15 + (1.0 - roughness) * 0.2).clamp(0.0, 1.0);
 
+  SurfaceMaterial copyWith({
+    double? roughness,
+    double? metallic,
+    double? fresnel,
+    double? sheen,
+    double? clearcoat,
+    double? translucency,
+  }) =>
+      SurfaceMaterial(
+        roughness: roughness ?? this.roughness,
+        metallic: metallic ?? this.metallic,
+        fresnel: fresnel ?? this.fresnel,
+        sheen: sheen ?? this.sheen,
+        clearcoat: clearcoat ?? this.clearcoat,
+        translucency: translucency ?? this.translucency,
+      );
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
