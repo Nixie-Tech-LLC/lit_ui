@@ -57,6 +57,12 @@ uniform float uOuterShadowWidth;
 uniform float uInnerShadowIntensity;
 uniform float uInnerShadowWidth;
 
+// Overlay mode: when 1.0, output only the lighting contribution (specular,
+// fresnel, clearcoat, sheen, curvature shading) without the base color fill.
+// This allows the shader to composite lighting onto arbitrary child content
+// (images, icons, etc.) rendered beneath it.
+uniform float uOverlay;
+
 out vec4 fragColor;
 
 // ── Heightmap functions ───────────────────────────────────────────────────────
@@ -216,6 +222,18 @@ void main() {
   } else {
     fillNormal = normalAt(uv);
   }
+
+  // ── Implicit dome curvature ──
+  // Tilt normals away from center to simulate a convex surface, so
+  // curvature shading works even without a heightmap profile.
+  // For circles this gives a sphere; for rects a pillow shape.
+  // Low values (0.05–0.15) give subtle UI surface curvature;
+  // high values (0.5–1.0) give 3D object depth.
+  if (uCurvature > 0.001) {
+    vec2 d = uv * 2.0 - 1.0;
+    fillNormal = normalize(fillNormal + vec3(-d * uCurvature, 0.0));
+  }
+
   // Only compute border normal when actually in/near the border zone.
   // Deep in the fill (borderBlend == 0), skip it entirely to avoid
   // any residual SDF gradient artifacts.
@@ -233,37 +251,59 @@ void main() {
   // Hemisphere ambient: lerp between ground and sky based on normal Y
   float skyBlend = N.y * 0.5 + 0.5;
   vec3 ambientColor = mix(uAmbientGround, uAmbientSky, skyBlend);
-  // High ambient floor (0.88) keeps the surface close to baseColor.
-  // Lights add subtle modulation on top, not dramatic reconstruction.
-  vec3 litColor = uBaseColor.rgb * 0.88 * ambientColor;
+
+  // Curvature controls the lighting model balance:
+  //   0   → flat UI surface: high ambient floor, subtle light modulation
+  //   0.1 → typical button/card: gentle shading
+  //   1   → 3D object: low ambient, strong light/shadow contrast
+  float ambientFloor = mix(0.88, 0.20, uCurvature);
+  float lightScale = mix(1.0, 5.0, uCurvature);
+
+  vec3 litColor = uBaseColor.rgb * ambientFloor * ambientColor;
 
   int numLights = int(uNumLights + 0.5);
   if (numLights > 0) {
-    litColor += shadeLight(N, V, uLight0Dir, uLight0Intensity, uLight0Color.rgb);
+    litColor += shadeLight(N, V, uLight0Dir, uLight0Intensity, uLight0Color.rgb) * lightScale;
   }
   if (numLights > 1) {
-    litColor += shadeLight(N, V, uLight1Dir, uLight1Intensity, uLight1Color.rgb);
+    litColor += shadeLight(N, V, uLight1Dir, uLight1Intensity, uLight1Color.rgb) * lightScale;
   }
   if (numLights > 2) {
-    litColor += shadeLight(N, V, uLight2Dir, uLight2Intensity, uLight2Color.rgb);
+    litColor += shadeLight(N, V, uLight2Dir, uLight2Intensity, uLight2Color.rgb) * lightScale;
   }
   if (numLights > 3) {
-    litColor += shadeLight(N, V, uLight3Dir, uLight3Intensity, uLight3Color.rgb);
+    litColor += shadeLight(N, V, uLight3Dir, uLight3Intensity, uLight3Color.rgb) * lightScale;
   }
 
-  // ── SDF-based edge effects (fresnel, sheen, clearcoat) ────────────────────
-  // In 3D these depend on NdotV which is always 1.0 for flat 2D widgets.
-  // Instead, use SDF distance from the widget edge as a proxy for
-  // "viewing angle" — pixels near the edge are treated as if at a
-  // glancing angle.
+  // ── Edge effects (fresnel, sheen, clearcoat) ─────────────────────────────
+  //
+  // Two fresnel sources, screen-composited:
+  //
+  // 1. SDF-based: uses distance from the widget edge as a proxy for viewing
+  //    angle. Works on flat widgets where NdotV is constant.
+  //
+  // 2. Dome-based (Schlick): uses the actual NdotV from the dome-curved
+  //    normal. When curvature > 0, the dome tilts normals at the edges,
+  //    dropping NdotV — physically correct fresnel on curved surfaces.
   //
   // -outerDist = distance from outer edge INTO the widget (positive inside).
   // Small values = near edge, large values = deep in center.
 
-  // ── Fresnel: bright inner rim ──
+  // ── SDF fresnel ──
   float fresnelWidth = 6.0 + uFresnel * 30.0;
   float fresnelEdge = 1.0 - smoothstep(0.0, fresnelWidth, -outerDist);
-  float fresnelGlow = uFresnel * fresnelEdge * fresnelEdge;
+  float sdfFresnel = uFresnel * fresnelEdge * fresnelEdge;
+
+  // ── Dome fresnel (Schlick approximation) ──
+  // NdotV = dot(N, V) where V = (0,0,1), so NdotV = N.z.
+  // On a flat surface N.z ≈ 1 → domeFresnel ≈ 0 (no contribution).
+  // On a dome rim N tilts outward → N.z drops → domeFresnel rises.
+  float NdotV = max(N.z, 0.0);
+  float domeFresnel = uFresnel * pow(1.0 - NdotV, 5.0);
+
+  // Screen composite: both sources reinforce without double-brightening.
+  // Equivalent to 1 - (1 - a) * (1 - b).
+  float fresnelGlow = sdfFresnel + domeFresnel - sdfFresnel * domeFresnel;
   vec3 fresnelColor = mix(vec3(1.0), uBaseColor.rgb, uMetallic);
   litColor += fresnelColor * fresnelGlow * 0.45;
 
@@ -288,6 +328,45 @@ void main() {
     float lightFacing = max(dot(edgeDir, uLight0Dir), 0.0);
     float ccGlow = uClearcoat * ccEdge * ccEdge * lightFacing * uLight0Intensity;
     litColor += vec3(ccGlow * 0.5);
+  }
+
+  // ── Overlay output ─────────────────────────────────────────────────────────
+  // In overlay mode the shader composites lighting onto the child content
+  // beneath it. We output the lighting *delta* relative to a flat unlit
+  // reference, mapped to 0.5-centered gray for overlay blending:
+  //   0.5 = no change, >0.5 = brighten, <0.5 = darken.
+  if (uOverlay > 0.5) {
+    // Border zone: transparent — the background painter handles the border.
+    if (borderBlend > 0.001) {
+      fragColor = vec4(0.0);
+      return;
+    }
+
+    // Reference: what a perfectly flat surface would produce (no curvature,
+    // no profile, no edge effects — just the ambient base + per-light
+    // shading on a viewer-facing normal).
+    vec3 flatN = vec3(0.0, 0.0, 1.0);
+    vec3 flatAmbient = mix(uAmbientGround, uAmbientSky, 0.5);
+    vec3 refColor = uBaseColor.rgb * ambientFloor * flatAmbient;
+    if (numLights > 0) refColor += shadeLight(flatN, V, uLight0Dir, uLight0Intensity, uLight0Color.rgb) * lightScale;
+    if (numLights > 1) refColor += shadeLight(flatN, V, uLight1Dir, uLight1Intensity, uLight1Color.rgb) * lightScale;
+    if (numLights > 2) refColor += shadeLight(flatN, V, uLight2Dir, uLight2Intensity, uLight2Color.rgb) * lightScale;
+    if (numLights > 3) refColor += shadeLight(flatN, V, uLight3Dir, uLight3Intensity, uLight3Color.rgb) * lightScale;
+
+    // Delta captures: dome curvature shading, profile bumps,
+    // specular hotspot shift, fresnel glow, clearcoat, sheen.
+    vec3 delta = litColor - refColor;
+
+    // Convert to perceptual luminance so the overlay doesn't tint the
+    // child content with the base color. The curvature/specular/fresnel
+    // response becomes a pure light-vs-shadow grayscale signal.
+    float deltaLum = dot(delta, vec3(0.299, 0.587, 0.114));
+
+    // Map to overlay range (0.5-centered) with perceptual scaling.
+    float overlayVal = clamp(0.5 + deltaLum * 2.0, 0.0, 1.0);
+
+    fragColor = vec4(vec3(overlayVal), outerAlpha);
+    return;
   }
 
   // Border gets slightly different base tone
