@@ -170,7 +170,7 @@ LitSurface(
 
 ## Dependencies
 
-Zero external dependencies — Flutter SDK only.
+- `flutter_animate` — used for hover transitions in `LitButton`
 
 ## Known Sharp Edges
 

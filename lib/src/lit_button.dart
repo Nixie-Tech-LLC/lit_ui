@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 
 import 'debug/widget_inspector.dart';
 import 'light_scene.dart';
@@ -27,7 +28,7 @@ class LitButton extends StatefulWidget {
     this.padding,
     this.borderWidth = 1,
     this.elevation = 4,
-    this.curvature = 0.1,
+    this.curvature = 0.05,
     this.hoverLightenAmount = 0.02,
     this.fillContrast = 1.0,
     this.borderContrast = 1.0,
@@ -87,8 +88,10 @@ class _LitButtonState extends State<LitButton> {
   @override
   Widget build(BuildContext context) {
     final scene = widget.scene ?? LightTheme.of(context);
-    final effectiveMaterial = LitMaterialTheme.resolveOf(context, widget.material);
-    final effectiveProfile = widget.profile ?? LitMaterialTheme.profileOf(context);
+    final effectiveMaterial =
+        LitMaterialTheme.resolveOf(context, widget.material);
+    final effectiveProfile =
+        widget.profile ?? LitMaterialTheme.profileOf(context);
     final radius = widget.borderRadius ?? BorderRadius.circular(10);
     final padding = widget.padding ??
         const EdgeInsets.symmetric(horizontal: 24, vertical: 14);
@@ -104,49 +107,64 @@ class _LitButtonState extends State<LitButton> {
           : null,
     );
 
-    Widget paintedButton = CustomPaint(
-      painter: _LitButtonPainter(
-        scene: scene,
-        screenCenter: screenCenter,
-        baseColor: widget.baseColor,
-        borderWidth: widget.borderWidth,
-        borderRadius: radius,
-        surfaceElevation: widget.elevation,
-        curvature: widget.curvature,
-        fillContrast: widget.fillContrast,
-        borderContrast: widget.borderContrast,
-        isHovered: _isHovered,
-        hoverLightenAmount: widget.hoverLightenAmount,
-        material: effectiveMaterial,
-        profile: effectiveProfile,
-        normalMap: widget.normalMap,
-      ),
-      child: Padding(
-        padding: padding + EdgeInsets.all(widget.borderWidth),
-        child: widget.child,
-      ),
-    );
-
     // Wrap in backdrop blur for translucent surfaces
     final translucency = effectiveMaterial?.translucency ?? 0.0;
-    if (translucency > 0) {
-      final sigma = 8.0 * translucency * (effectiveMaterial?.roughness ?? 0.0);
-      paintedButton = ClipRRect(
-        borderRadius: radius,
-        child: BackdropFilter(
-          filter: ui.ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
-          child: paintedButton,
-        ),
-      );
-    }
 
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: paintedButton,
+      child: Animate(
+        target: _isHovered ? 1.0 : 0.0,
+        effects: [
+          CustomEffect(
+            duration: 120.ms,
+            curve: Curves.easeOut,
+            begin: 0.0,
+            end: widget.hoverLightenAmount,
+            builder: (context, hoverAmount, child) {
+              Widget paintedButton = CustomPaint(
+                painter: _LitButtonPainter(
+                  scene: scene,
+                  screenCenter: screenCenter,
+                  baseColor: widget.baseColor,
+                  borderWidth: widget.borderWidth,
+                  borderRadius: radius,
+                  surfaceElevation: widget.elevation,
+                  curvature: widget.curvature,
+                  fillContrast: widget.fillContrast,
+                  borderContrast: widget.borderContrast,
+                  hoverAmount: hoverAmount,
+                  material: effectiveMaterial,
+                  profile: effectiveProfile,
+                  normalMap: widget.normalMap,
+                ),
+                child: child,
+              );
+
+              if (translucency > 0) {
+                final sigma =
+                    8.0 * translucency * (effectiveMaterial?.roughness ?? 0.0);
+                paintedButton = ClipRRect(
+                  borderRadius: radius,
+                  child: BackdropFilter(
+                    filter: ui.ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
+                    child: paintedButton,
+                  ),
+                );
+              }
+
+              return GestureDetector(
+                onTap: widget.onTap,
+                child: paintedButton,
+              );
+            },
+          ),
+        ],
+        child: Padding(
+          padding: padding + EdgeInsets.all(widget.borderWidth),
+          child: widget.child,
+        ),
       ),
     );
   }
@@ -163,8 +181,7 @@ class _LitButtonPainter extends CustomPainter {
     required this.curvature,
     required this.fillContrast,
     required this.borderContrast,
-    required this.isHovered,
-    required this.hoverLightenAmount,
+    required this.hoverAmount,
     this.material,
     this.profile,
     this.normalMap,
@@ -179,8 +196,7 @@ class _LitButtonPainter extends CustomPainter {
   final double curvature;
   final double fillContrast;
   final double borderContrast;
-  final bool isHovered;
-  final double hoverLightenAmount;
+  final double hoverAmount;
   final SurfaceMaterial? material;
   final SurfaceProfile? profile;
   final ui.Image? normalMap;
@@ -202,7 +218,8 @@ class _LitButtonPainter extends CustomPainter {
       final shadowBlur = material != null
           ? surfaceElevation * (1.5 - 0.5) * (1.0 + material!.roughness * 0.5)
           : surfaceElevation * (1.5 - 0.5);
-      final shadowOffset = Offset(-dir.dx * shadowDistance, -dir.dy * shadowDistance);
+      final shadowOffset =
+          Offset(-dir.dx * shadowDistance, -dir.dy * shadowDistance);
       final shadowOpacity = (0.12 * intensity).clamp(0.0, 0.4);
 
       final shadowRRect = outerRRect.shift(shadowOffset);
@@ -214,17 +231,17 @@ class _LitButtonPainter extends CustomPainter {
 
     // ── Compute effective base (hover) ──
     var effectiveBase = baseColor;
-    if (isHovered) {
+    if (hoverAmount != 0) {
       final h = HSLColor.fromColor(effectiveBase);
       effectiveBase = h
-          .withLightness((h.lightness + hoverLightenAmount).clamp(0.0, 1.0))
+          .withLightness((h.lightness + hoverAmount).clamp(0.0, 1.0))
           .toColor();
     }
 
     // ── Shader path: unified fill + border in one draw call ──
     final useShader = LitShader.isLoaded &&
         (material != null ||
-         (profile != null && profile!.pattern != SurfacePattern.flat));
+            (profile != null && profile!.pattern != SurfacePattern.flat));
     if (useShader) {
       final shader = LitShader.createShader(
         size: size,
@@ -308,7 +325,8 @@ class _LitButtonPainter extends CustomPainter {
         // Also boost saturation for metals
         final edgeHsl = HSLColor.fromColor(edgeColor);
         edgeColor = edgeHsl
-            .withSaturation((edgeHsl.saturation + mMetallic * 0.3).clamp(0.0, 1.0))
+            .withSaturation(
+                (edgeHsl.saturation + mMetallic * 0.3).clamp(0.0, 1.0))
             .toColor();
       }
       // Light color tinting (existing)
@@ -353,8 +371,10 @@ class _LitButtonPainter extends CustomPainter {
         final dir = light.directionAt(screenCenter);
 
         final effectiveFillContrast = material?.fillContrast ?? fillContrast;
-        final lightenAmount = 0.15 * intensity * effectiveFillContrast * curvature;
-        final darkenAmount = 0.20 * intensity * effectiveFillContrast * curvature;
+        final lightenAmount =
+            0.15 * intensity * effectiveFillContrast * curvature;
+        final darkenAmount =
+            0.20 * intensity * effectiveFillContrast * curvature;
 
         final tintTarget = mMetallic > 0.5 ? baseColor : light.color;
         final litBase = Color.lerp(effectiveBase, tintTarget, 0.5 * intensity)!;
@@ -373,8 +393,10 @@ class _LitButtonPainter extends CustomPainter {
         final Gradient gradient;
 
         if (light is DirectionalLight) {
-          final begin = Alignment(dir.dx.clamp(-1.0, 1.0), dir.dy.clamp(-1.0, 1.0));
-          final end = Alignment((-dir.dx).clamp(-1.0, 1.0), (-dir.dy).clamp(-1.0, 1.0));
+          final begin =
+              Alignment(dir.dx.clamp(-1.0, 1.0), dir.dy.clamp(-1.0, 1.0));
+          final end =
+              Alignment((-dir.dx).clamp(-1.0, 1.0), (-dir.dy).clamp(-1.0, 1.0));
           gradient = LinearGradient(
             begin: begin,
             end: end,
@@ -396,7 +418,8 @@ class _LitButtonPainter extends CustomPainter {
           final halfH = fillRect.height / 2;
           final relX = (lightPos.dx - screenCenter.dx) / halfW;
           final relY = (lightPos.dy - screenCenter.dy) / halfH;
-          final center = Alignment(relX.clamp(-3.0, 3.0), relY.clamp(-3.0, 3.0));
+          final center =
+              Alignment(relX.clamp(-3.0, 3.0), relY.clamp(-3.0, 3.0));
 
           final dist = (lightPos - screenCenter).distance;
           final maxDim = math.max(fillRect.width, fillRect.height);
@@ -433,7 +456,7 @@ class _LitButtonPainter extends CustomPainter {
       curvature != oldDelegate.curvature ||
       fillContrast != oldDelegate.fillContrast ||
       borderContrast != oldDelegate.borderContrast ||
-      isHovered != oldDelegate.isHovered ||
+      hoverAmount != oldDelegate.hoverAmount ||
       material != oldDelegate.material ||
       profile != oldDelegate.profile ||
       normalMap != oldDelegate.normalMap;

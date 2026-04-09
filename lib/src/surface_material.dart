@@ -91,8 +91,8 @@ class SurfaceMaterial {
     roughness: 0.91,
     metallic: 0.0,
     fresnel: 0.17,
-    sheen: 0.04,
-    clearcoat: 0.26,
+    sheen: 0.0,
+    clearcoat: 0.0,
   );
 
   /// Lacquered — rough matte base with a full glossy clearcoat on top.
@@ -201,7 +201,8 @@ class SurfaceMaterial {
           translucency == other.translucency;
 
   @override
-  int get hashCode => Object.hash(roughness, metallic, fresnel, sheen, clearcoat, translucency);
+  int get hashCode =>
+      Object.hash(roughness, metallic, fresnel, sheen, clearcoat, translucency);
 
   @override
   String toString() =>
