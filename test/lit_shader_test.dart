@@ -51,4 +51,35 @@ void main() {
       expect(result, isNull);
     });
   });
+
+  group('LitShader.clampBorderRadius', () {
+    test('caps each corner at half the shorter side', () {
+      final result = LitShader.clampBorderRadius(
+        const Size(38, 38),
+        BorderRadius.circular(100),
+      );
+      expect(result.topLeft.x, 19.0);
+      expect(result.topRight.x, 19.0);
+      expect(result.bottomLeft.x, 19.0);
+      expect(result.bottomRight.x, 19.0);
+    });
+
+    test('uses the shorter side for non-square surfaces', () {
+      final result = LitShader.clampBorderRadius(
+        const Size(200, 40),
+        BorderRadius.circular(100),
+      );
+      expect(result.topLeft.x, 20.0);
+      expect(result.bottomRight.x, 20.0);
+    });
+
+    test('leaves radii smaller than the limit untouched', () {
+      final result = LitShader.clampBorderRadius(
+        const Size(100, 100),
+        BorderRadius.circular(8),
+      );
+      expect(result.topLeft.x, 8.0);
+      expect(result.bottomRight.x, 8.0);
+    });
+  });
 }

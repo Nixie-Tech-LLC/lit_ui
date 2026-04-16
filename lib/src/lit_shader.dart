@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -170,11 +171,12 @@ class LitShader {
     shader.setFloat(44, curvature);
 
     // ── Border (uniforms 45-49) ──
+    final clamped = clampBorderRadius(size, borderRadius);
     shader.setFloat(45, borderWidth);
-    shader.setFloat(46, borderRadius.topLeft.x);
-    shader.setFloat(47, borderRadius.topRight.x);
-    shader.setFloat(48, borderRadius.bottomRight.x);
-    shader.setFloat(49, borderRadius.bottomLeft.x);
+    shader.setFloat(46, clamped.topLeft.x);
+    shader.setFloat(47, clamped.topRight.x);
+    shader.setFloat(48, clamped.bottomRight.x);
+    shader.setFloat(49, clamped.bottomLeft.x);
 
     // ── Ambient (uniforms 50-55) ──
     shader.setFloat(50, scene.ambientSky.r);
@@ -203,5 +205,21 @@ class LitShader {
     shader.setFloat(62, overlay ? 1.0 : 0.0);
 
     return shader;
+  }
+
+  /// Clamps each corner radius to half the shorter side of [size].
+  ///
+  /// Un-clamped radii (e.g. `BorderRadius.circular(100)` on a 38×38 surface)
+  /// push every pixel outside the SDF, which the fragment shader discards to
+  /// transparent — producing an invisible fill. Clamping lets callers pass
+  /// any large value to get a pill/circle shape regardless of widget size.
+  static BorderRadius clampBorderRadius(Size size, BorderRadius radius) {
+    final max = math.min(size.width, size.height) * 0.5;
+    return BorderRadius.only(
+      topLeft: Radius.circular(math.min(radius.topLeft.x, max)),
+      topRight: Radius.circular(math.min(radius.topRight.x, max)),
+      bottomRight: Radius.circular(math.min(radius.bottomRight.x, max)),
+      bottomLeft: Radius.circular(math.min(radius.bottomLeft.x, max)),
+    );
   }
 }
